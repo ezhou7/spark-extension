@@ -83,4 +83,32 @@ class AppSuite extends AnyFunSuite with SparkTestSession {
       }
     }
   }
+
+  test("run app writing stats") {
+    withTempPath { path =>
+      // write left dataframe as parquet
+      val leftPath = new File(path, "left.parquet").getAbsolutePath
+      DiffSuite.left(spark).write.parquet(leftPath)
+
+      // write right dataframe as csv
+      val rightPath = new File(path, "right.parquet").getAbsolutePath
+      DiffSuite.right(spark).write.parquet(rightPath)
+
+      // launch app
+      val outputPath = new File(path, "diff.parquet").getAbsolutePath
+      App.main(Array(
+        "--format", "parquet",
+        "--statistics",
+        "--id", "id",
+        leftPath,
+        rightPath,
+        outputPath
+      ))
+
+      // assert written diff
+      val actual = spark.read.parquet(outputPath).as[(String, Long)].collect().toMap
+      val expected = DiffSuite.expectedDiff.groupBy(row => row.getString(0)).view.mapValues(_.length).toMap
+      assert(actual === expected)
+    }
+  }
 }
